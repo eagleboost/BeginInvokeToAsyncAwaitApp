@@ -1,5 +1,7 @@
 ﻿namespace BeginInvokeToAsyncAwaitApp
 {
+  using System.Collections.Generic;
+  using System.Threading;
   using System.Threading.Tasks;
   using System.Windows;
   using System.Windows.Threading;
@@ -12,6 +14,7 @@
     private DispatcherWaiter _waiter;
     private MainWindow _mainWindow;
     private Dispatcher _appDispatcher;
+    private CancellationTokenSource _cts;
     
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -46,6 +49,10 @@
         Print("DoSomething() callback in OnCompleted() on background");
         return DoSomethingCallback();
       });
+      
+      PrintLine();
+      Print("DoSomethingMultipleTimesWithCancellation");
+      await DoSomethingMultipleTimesWithCancellationAsync();
     }
     
     private void Print(string msg)
@@ -97,6 +104,51 @@
       });
 
       return tcs.Task;
+    }
+
+    private async Task DoSomethingMultipleTimesWithCancellationAsync()
+    {
+      Print("Before OnCompleted");
+
+      var tasks = new List<Task>();
+      for (var i = 0; i < 5; i++)
+      {
+        var task = CreateTask(i);
+        tasks.Add(task);
+      }
+
+      await Task.WhenAll(tasks);
+    }
+
+    private Task CreateTask(int i)
+    {
+      return Task.Run(async () =>
+      {
+        Print("Create Task " + i.ToString());
+        var ct = ResetCancellationToken();
+        var status = await _waiter.WaitAsync(DispatcherPriority.SystemIdle, ct);
+        Print("Task " + i.ToString() + ": " + status.ToString() + ", " + ct.IsCancellationRequested.ToString());
+        if (status == TaskStatus.RanToCompletion)
+        {
+          if (!ct.IsCancellationRequested)
+          {
+            PrintLine();
+            Print("Task " + i.ToString() + " completed");
+          }
+        }
+      });
+    }
+    
+    private CancellationToken ResetCancellationToken()
+    {
+      var newCts = new CancellationTokenSource();
+      var cts = Interlocked.Exchange(ref _cts, newCts);
+      if (cts != null)
+      {
+        cts.Cancel();
+      }
+      
+      return newCts.Token;
     }
     
     private void DoSomething()

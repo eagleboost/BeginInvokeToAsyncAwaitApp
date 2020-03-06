@@ -40,8 +40,8 @@ namespace BeginInvokeToAsyncAwaitApp
   public class DispatcherWaiter : IDispatcherWaiter
   {
     private readonly Dispatcher _dispatcher;
-    private DispatcherPriority _priority;
-    private CancellationToken _ct;
+    private readonly DispatcherPriority _priority = DispatcherPriority.Normal;
+    private readonly CancellationToken _ct;
     private bool _isCompleted;
 
     public DispatcherWaiter(Dispatcher d)
@@ -49,6 +49,13 @@ namespace BeginInvokeToAsyncAwaitApp
       _dispatcher = d;
     }
 
+    private DispatcherWaiter(Dispatcher d, DispatcherPriority priority, CancellationToken ct)
+    {
+      _dispatcher = d;
+      _priority = priority;
+      _ct = ct;
+    }
+    
     public IDispatcherWaiter GetAwaiter()
     {
       return this;
@@ -66,7 +73,16 @@ namespace BeginInvokeToAsyncAwaitApp
 
     public void OnCompleted(Action continuation)
     {
-      _dispatcher.InvokeAsync(continuation, _priority, _ct);
+      if (_ct.IsCancellationRequested)
+      {
+        continuation();
+      }
+      else
+      {
+        var op = _dispatcher.InvokeAsync(() => { }, _priority, _ct);
+        op.Completed += (s, e) => continuation();
+        op.Aborted += (s, e) => continuation();
+      }
     }
 
     public bool CheckAccess()
@@ -87,14 +103,7 @@ namespace BeginInvokeToAsyncAwaitApp
 
     public IDispatcherWaiter WaitAsync(DispatcherPriority priority = DispatcherPriority.Normal, CancellationToken ct = default(CancellationToken))
     {
-      if(priority== DispatcherPriority.Send)
-      {
-        throw new InvalidOperationException("Send priority is not allowed");
-      }
-      
-      _priority = priority;
-      _ct = ct;
-      return this;
+      return new DispatcherWaiter(_dispatcher, priority, ct);
     }
   }
 
