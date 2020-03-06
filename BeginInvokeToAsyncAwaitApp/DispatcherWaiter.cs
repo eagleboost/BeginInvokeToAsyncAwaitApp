@@ -51,11 +51,21 @@ namespace BeginInvokeToAsyncAwaitApp
 
     private DispatcherWaiter(Dispatcher d, DispatcherPriority priority, CancellationToken ct)
     {
+      if (priority == DispatcherPriority.Send)
+      {
+        throw new InvalidOperationException("Send priority is not allowed");
+      }
+
+      if (priority <= DispatcherPriority.Inactive)
+      {
+        throw new InvalidOperationException(priority.ToString() + " priority is not allowed");
+      }
+
       _dispatcher = d;
       _priority = priority;
       _ct = ct;
     }
-    
+
     public IDispatcherWaiter GetAwaiter()
     {
       return this;
@@ -97,8 +107,10 @@ namespace BeginInvokeToAsyncAwaitApp
 
     public IDispatcherWaiter CheckedWaitAsync()
     {
-      _isCompleted = _dispatcher == Dispatcher.CurrentDispatcher;
-      return this;
+      return new DispatcherWaiter(_dispatcher)
+      {
+        _isCompleted = _dispatcher == Dispatcher.CurrentDispatcher
+      };
     }
 
     public IDispatcherWaiter WaitAsync(DispatcherPriority priority = DispatcherPriority.Normal, CancellationToken ct = default(CancellationToken))
